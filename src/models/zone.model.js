@@ -73,7 +73,6 @@ const zoneSchema = new mongoose.Schema(
   }
 );
 
-zoneSchema.index({ code: 1 });
 zoneSchema.index({ status: 1 });
 zoneSchema.index({ assignedLead: 1 });
 

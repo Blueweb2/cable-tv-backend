@@ -53,9 +53,9 @@ app.use("/api", apiLimiter);
 app.use(express.json({ limit: "2mb" }));
 app.use("/uploads", express.static(require("path").join(__dirname, "../uploads")));
 
-// Health check
-app.get("/api/health", (req, res) => {
-  res.json({
+// Health check (Supports GET & HEAD on / and /api/health for platform health checks)
+app.get(["/", "/api/health"], (req, res) => {
+  res.status(200).json({
     success: true,
     message: "Cable Operator Staff Operations API is running",
     timestamp: new Date(),
