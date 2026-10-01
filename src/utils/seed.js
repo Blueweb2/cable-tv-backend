@@ -17,15 +17,15 @@ async function seed() {
 
     // 1. Seed Manager/Admin
     let admin = await User.findOne({
-      $or: [{ email: "admin@cableops.com" }, { email: "admin@eventmanagement.com" }],
+      $or: [{ email: "manager@cableops.com" }, { email: "admin@cableops.com" }, { email: "admin@eventmanagement.com" }],
     });
 
     if (!admin) {
-      const hashedAdminPassword = await bcrypt.hash("admin123", 12);
+      const hashedAdminPassword = await bcrypt.hash("Password123!", 12);
       admin = await User.create({
-        name: "Alex Morgan (Network Ops Manager)",
-        username: "admin_alex",
-        email: "admin@cableops.com",
+        name: "Admin Manager",
+        username: "admin_manager",
+        email: "manager@cableops.com",
         password: hashedAdminPassword,
         role: "admin",
         phone: "+91 98765 43210",
@@ -34,7 +34,7 @@ async function seed() {
         employmentType: "full-time",
         isActive: true,
       });
-      console.log("Created default manager: admin@cableops.com / admin123");
+      console.log("Created default manager: manager@cableops.com / Password123!");
     } else {
       console.log("Manager already exists:", admin.email);
     }
@@ -43,7 +43,7 @@ async function seed() {
     const techniciansData = [
       {
         name: "Rahul Sharma",
-        username: "rahul_fiber",
+        username: "rahul_sharma",
         email: "rahul@cableops.com",
         phone: "+91 98111 22334",
         location: "North Sector Hub",

@@ -64,6 +64,7 @@ app.get(["/", "/api/health"], (req, res) => {
 
 // Cable Operator Operations Routes
 app.use("/api/auth", authRoutes);
+app.use("/auth", authRoutes); // Fallback alias for requests missing /api prefix
 app.use("/api/users/staff", staffRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/zones", zoneRoutes);
