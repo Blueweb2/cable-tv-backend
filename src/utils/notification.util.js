@@ -1,20 +1,18 @@
 /**
- * Notification & Email Dispatcher Utility
- * Handles dispatching email notifications to staff on duty assignment
+ * Notification & Dispatcher Utility
+ * Handles dispatching notifications to technicians on duty assignment
  * and notifying managers on duty acceptance or rejection.
  */
 
-const sendDutyAssignmentNotification = async ({
-  staff,
-  event,
-  duty,
-  assignedBy,
-}) => {
+const sendDutyAssignmentNotification = async (payload) => {
   try {
-    const staffEmail = staff?.email || "sabithabasimavk@gmail.com";
-    const staffName = staff?.name || "Team Member";
-    const eventName = event?.eventName || "Scheduled Event";
-    const dutyTitle = duty?.dutyTitle || "Assigned Duty";
+    const duty = payload?.duty || payload || {};
+    const staff = payload?.staff || duty.staff || {};
+    const staffEmail = staff?.email || "technician@cableops.com";
+    const staffName = staff?.name || "Technician";
+    const dutyTitle = duty?.dutyTitle || "Field Work Order";
+    const zoneName = duty?.zoneName || (typeof duty?.zone === "object" ? duty?.zone?.name : "") || "Cable Network Zone";
+    const nodeNumber = duty?.nodeNumber ? ` [Node: ${duty.nodeNumber}]` : "";
     const dateFormatted = duty?.dutyDate
       ? new Date(duty.dutyDate).toLocaleDateString("en-US", {
           weekday: "short",
@@ -39,19 +37,19 @@ const sendDutyAssignmentNotification = async ({
     };
 
     const timeFormatted = `${formatTime12(duty?.startTime)} - ${formatTime12(duty?.endTime)}`;
-    const location = event?.location || "Event Venue";
+    const location = duty?.location || duty?.siteLocation?.address || "Assigned Field Site";
 
     console.log("=================================================");
-    console.log(` [EMAIL DISPATCHED] Shift Duty Assignment`);
+    console.log(` [NOTIFICATION DISPATCHED] Field Duty Assignment`);
     console.log(`To: ${staffName} <${staffEmail}>`);
-    console.log(`Subject: ⚡ ACTION REQUIRED: New Duty Assigned - ${eventName}`);
+    console.log(`Subject: ⚡ ACTION REQUIRED: New Field Duty - ${dutyTitle} (${zoneName})`);
     console.log(`Body:`);
     console.log(`Hi ${staffName},`);
-    console.log(`You have been assigned to duty: "${dutyTitle}" under ${duty?.department || duty?.role || "Operations"}.`);
-    console.log(`Event: ${eventName}`);
+    console.log(`You have been assigned to: "${dutyTitle}" under ${duty?.department || "Field Operations"}.${nodeNumber}`);
+    console.log(`Zone: ${zoneName}`);
     console.log(`Date & Time: ${dateFormatted} (${timeFormatted})`);
     console.log(`Location: ${location}`);
-    console.log(`Please log in to your staff portal immediately to ACCEPT or DECLINE this duty.`);
+    console.log(`Please log in to your staff portal to ACCEPT or DECLINE this field duty.`);
     console.log("=================================================");
 
     return { success: true };
@@ -61,22 +59,20 @@ const sendDutyAssignmentNotification = async ({
   }
 };
 
-const sendDutyResponseNotificationToManager = async ({
-  staff,
-  event,
-  duty,
-  status,
-  reason,
-}) => {
+const sendDutyResponseNotificationToManager = async (payload, statusParam) => {
   try {
-    const staffName = staff?.name || "Staff Member";
-    const eventName = event?.eventName || "Event";
-    const dutyTitle = duty?.dutyTitle || "Duty";
+    const duty = payload?.duty || payload || {};
+    const staff = payload?.staff || duty.staff || {};
+    const staffName = staff?.name || "Technician";
+    const dutyTitle = duty?.dutyTitle || "Field Duty";
+    const zoneName = duty?.zoneName || "Field Zone";
+    const status = statusParam || payload?.status || duty?.status || "UPDATED";
+    const reason = payload?.reason || duty?.rejectionReason;
 
     console.log("=================================================");
-    console.log(` [MANAGER NOTIFICATION] Staff Duty ${status}`);
-    console.log(`Event: ${eventName} | Duty: ${dutyTitle}`);
-    console.log(`Staff: ${staffName}`);
+    console.log(` [MANAGER NOTIFICATION] Field Duty ${status}`);
+    console.log(`Zone: ${zoneName} | Work Order: ${dutyTitle}`);
+    console.log(`Technician: ${staffName}`);
     console.log(`Response: ${status}`);
     if (reason) {
       console.log(`Rejection Reason Notes: "${reason}"`);
