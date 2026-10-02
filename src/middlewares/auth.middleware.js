@@ -1,7 +1,8 @@
 const { verifyToken } = require("../utils/jwt");
 const { authorize } = require("./role.middleware");
+const User = require("../models/user.model");
 
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -37,9 +38,26 @@ const authenticate = (req, res, next) => {
       });
     }
 
+    // Verify user exists and is active in database
+    const user = await User.findById(decoded.userId).select("role isActive");
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User account not found or removed",
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated",
+      });
+    }
+
     req.user = {
-      userId: decoded.userId,
-      role: decoded.role,
+      userId: user._id.toString(),
+      role: user.role,
     };
 
     next();

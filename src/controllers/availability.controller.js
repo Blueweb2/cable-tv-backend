@@ -19,8 +19,8 @@ const setAvailability = async (
       notes,
     } = req.body;
 
-    // Auto-bind staff ID if logged in user is staff
-    if (!staff && (req.user?.role || "").toLowerCase() === "staff") {
+    // Enforce staff can only set their own availability
+    if ((req.user?.role || "").toLowerCase() === "staff") {
       staff = req.user.userId;
     }
 
@@ -121,6 +121,20 @@ const getAvailabilityById = async (
       await availabilityService.getAvailabilityById(
         req.params.id
       );
+
+    const role = (req.user?.role || "").toLowerCase();
+    if (role === "staff") {
+      const availStaffId =
+        availability.staff?._id?.toString() ||
+        availability.staff?.toString();
+      if (availStaffId !== req.user.userId) {
+        const error = new Error(
+          "You do not have permission to view this availability record"
+        );
+        error.statusCode = 403;
+        throw error;
+      }
+    }
 
     res.status(200).json({
       success: true,

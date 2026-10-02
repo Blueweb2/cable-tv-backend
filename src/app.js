@@ -49,7 +49,22 @@ const apiLimiter = rateLimit({
   },
 });
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many authentication attempts. Please try again in 15 minutes.",
+  },
+});
+
 app.use("/api", apiLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/auth/login", authLimiter);
+app.use("/auth/register", authLimiter);
 app.use(express.json({ limit: "2mb" }));
 app.use("/uploads", express.static(require("path").join(__dirname, "../uploads")));
 

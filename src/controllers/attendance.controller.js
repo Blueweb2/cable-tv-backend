@@ -150,13 +150,21 @@ const getAttendance = async (req, res, next) => {
   }
 };
 
-/**
- * Get single record
- * GET /api/attendance/:id
- */
 const getAttendanceById = async (req, res, next) => {
   try {
     const attendance = await attendanceService.getAttendanceById(req.params.id);
+    const role = (req.user?.role || "").toLowerCase();
+
+    if (role === "staff") {
+      const recordStaffId =
+        attendance.staff?._id?.toString() || attendance.staff?.toString();
+      if (recordStaffId !== req.user.userId) {
+        const error = new Error("You do not have permission to view this attendance record");
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: {

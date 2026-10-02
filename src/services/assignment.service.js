@@ -279,11 +279,18 @@ const updateAssignment = async (id, updateData) => {
 /**
  * Staff add site photo proof
  */
-const addSitePhoto = async (dutyId, staffId, { url, caption = "", photoType = "AFTER_WORK" }) => {
+const addSitePhoto = async (dutyId, staffId, userRole = "staff", { url, caption = "", photoType = "AFTER_WORK" }) => {
   const duty = await Duty.findById(dutyId);
   if (!duty) {
     const error = new Error("Duty not found");
     error.statusCode = 404;
+    throw error;
+  }
+
+  const role = (userRole || "").toLowerCase();
+  if (role === "staff" && duty.staff.toString() !== staffId.toString()) {
+    const error = new Error("You can only upload site photos for your assigned field duty");
+    error.statusCode = 403;
     throw error;
   }
 
@@ -305,12 +312,30 @@ const addSitePhoto = async (dutyId, staffId, { url, caption = "", photoType = "A
 /**
  * Delete site photo
  */
-const deleteSitePhoto = async (dutyId, photoId) => {
+const deleteSitePhoto = async (dutyId, photoId, userId, userRole = "staff") => {
   const duty = await Duty.findById(dutyId);
   if (!duty) {
     const error = new Error("Duty not found");
     error.statusCode = 404;
     throw error;
+  }
+
+  const photo = duty.sitePhotos.find((p) => p._id.toString() === photoId.toString());
+  if (!photo) {
+    const error = new Error("Site photo not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const role = (userRole || "").toLowerCase();
+  if (role === "staff") {
+    const uploaderId = photo.uploadedBy?.toString();
+    const dutyStaffId = duty.staff?.toString();
+    if (uploaderId !== userId?.toString() && dutyStaffId !== userId?.toString()) {
+      const error = new Error("You do not have permission to remove this photo");
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   duty.sitePhotos = duty.sitePhotos.filter((p) => p._id.toString() !== photoId.toString());

@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const departmentController = require("../controllers/department.controller");
-const { protect } = require("../middlewares/auth.middleware");
+const { protect, restrictTo } = require("../middlewares/auth.middleware");
 
-router.use(protect);
+router.use(protect, restrictTo("admin", "manager"));
 
 router.get("/", departmentController.getDepartmentStats);
 router.get("/recommendations", departmentController.getStaffRecommendations);

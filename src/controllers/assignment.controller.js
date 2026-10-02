@@ -109,6 +109,18 @@ const getAssignments = async (req, res, next) => {
 const getAssignmentById = async (req, res, next) => {
   try {
     const assignment = await assignmentService.getAssignmentById(req.params.id);
+    const role = (req.user?.role || "").toLowerCase();
+
+    // Verify resource ownership for staff
+    if (role === "staff") {
+      const assignedStaffId =
+        assignment.staff?._id?.toString() || assignment.staff?.toString();
+      if (assignedStaffId !== req.user.userId) {
+        const error = new Error("You do not have permission to view this field duty");
+        error.statusCode = 403;
+        throw error;
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -181,11 +193,16 @@ const uploadSitePhoto = async (req, res, next) => {
       throw error;
     }
 
-    const duty = await assignmentService.addSitePhoto(dutyId, req.user.userId, {
-      url: photoUrl,
-      caption: caption || "",
-      photoType: photoType || "AFTER_WORK",
-    });
+    const duty = await assignmentService.addSitePhoto(
+      dutyId,
+      req.user.userId,
+      req.user.role,
+      {
+        url: photoUrl,
+        caption: caption || "",
+        photoType: photoType || "AFTER_WORK",
+      }
+    );
 
     res.status(201).json({
       success: true,
@@ -207,7 +224,12 @@ const uploadSitePhoto = async (req, res, next) => {
 const deleteSitePhoto = async (req, res, next) => {
   try {
     const { id, photoId } = req.params;
-    const duty = await assignmentService.deleteSitePhoto(id, photoId);
+    const duty = await assignmentService.deleteSitePhoto(
+      id,
+      photoId,
+      req.user.userId,
+      req.user.role
+    );
 
     res.status(200).json({
       success: true,
