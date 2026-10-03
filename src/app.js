@@ -15,6 +15,7 @@ const expenseRoutes = require("./routes/expense.routes");
 const reportRoutes = require("./routes/report.routes");
 const departmentRoutes = require("./routes/department.routes");
 const inventoryRoutes = require("./routes/inventory.routes");
+const customerRoutes = require("./routes/customer.routes");
 
 const notFound = require("./middlewares/notFound.middleware");
 const errorHandler = require("./middlewares/error.middleware");
@@ -92,6 +93,8 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/clients", customerRoutes); // Backward-compatible alias
 
 // 404 handler
 app.use(notFound);
