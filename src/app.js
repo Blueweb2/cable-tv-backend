@@ -14,6 +14,7 @@ const attendanceRoutes = require("./routes/attendance.routes");
 const expenseRoutes = require("./routes/expense.routes");
 const reportRoutes = require("./routes/report.routes");
 const departmentRoutes = require("./routes/department.routes");
+const inventoryRoutes = require("./routes/inventory.routes");
 
 const notFound = require("./middlewares/notFound.middleware");
 const errorHandler = require("./middlewares/error.middleware");
@@ -90,6 +91,7 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/departments", departmentRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 // 404 handler
 app.use(notFound);

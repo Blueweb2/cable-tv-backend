@@ -7,6 +7,7 @@ const User = require("../models/user.model");
 const Zone = require("../models/zone.model");
 const Duty = require("../models/duty.model");
 const Attendance = require("../models/attendance.model");
+const Material = require("../models/material.model");
 
 async function seed() {
   try {
@@ -246,6 +247,124 @@ async function seed() {
         },
       ]);
       console.log("Created 3 Cable Operator Field Duties.");
+    }
+
+    // 5. Seed Material Catalog
+    const materialCount = await Material.countDocuments();
+    if (materialCount === 0) {
+      await Material.insertMany([
+        {
+          name: "6-Core Armored Single-Mode Fiber Cable",
+          code: "FIB-6C-ARM",
+          category: "Fiber Cable",
+          unit: "meter",
+          description: "Heavy-duty outdoor armored optical fiber cable for trunk line distribution.",
+          minimumStock: 200,
+          currentStock: 1500,
+          unitPrice: 25,
+          location: "Main Store",
+        },
+        {
+          name: "2-Core FTTH Drop Cable with FRP",
+          code: "DRP-2C-FRP",
+          category: "Drop Cable",
+          unit: "meter",
+          description: "G.657A1 bend-insensitive fiber drop cable for subscriber premises connection.",
+          minimumStock: 300,
+          currentStock: 2200,
+          unitPrice: 12,
+          location: "Main Store",
+        },
+        {
+          name: "RG-6 Coaxial Cable with 60% Braid",
+          code: "COAX-RG6-60",
+          category: "Installation Accessories",
+          unit: "meter",
+          description: "75 Ohm RG6 coaxial cable for CATV and RF distribution.",
+          minimumStock: 150,
+          currentStock: 800,
+          unitPrice: 15,
+          location: "Main Store",
+        },
+        {
+          name: "SC/APC Fast Assembly Optical Connector",
+          code: "CONN-SC-APC",
+          category: "Connector",
+          unit: "piece",
+          description: "Field-assembly SC/APC green optical fast connector for drop cable termination.",
+          minimumStock: 50,
+          currentStock: 350,
+          unitPrice: 45,
+          location: "Main Store",
+        },
+        {
+          name: "Heat Shrinkable Fusion Splice Sleeve 60mm",
+          code: "SLV-60MM-SS",
+          category: "Splice Sleeve",
+          unit: "piece",
+          description: "Stainless steel rod reinforced transparent heat shrink splice protection sleeves.",
+          minimumStock: 100,
+          currentStock: 600,
+          unitPrice: 5,
+          location: "Main Store",
+        },
+        {
+          name: "GPON Gigabit ONU 1GE + 1FE + Wi-Fi",
+          code: "ONU-GPON-WIFI",
+          category: "ONU",
+          unit: "piece",
+          description: "High-performance FTTH Optical Network Unit for residential broadband.",
+          minimumStock: 15,
+          currentStock: 45,
+          unitPrice: 1250,
+          location: "Main Store",
+        },
+        {
+          name: "Dual Band Gigabit AC1200 Wi-Fi Router",
+          code: "RTR-AC1200-DB",
+          category: "Router",
+          unit: "piece",
+          description: "802.11ac 1200Mbps dual-band Wi-Fi router with 4 high-gain antennas.",
+          minimumStock: 10,
+          currentStock: 30,
+          unitPrice: 1800,
+          location: "Main Store",
+        },
+        {
+          name: "HD Digital Cable Set-Top Box (DVB-C)",
+          code: "STB-DVBC-HD",
+          category: "STB",
+          unit: "piece",
+          description: "Standard DVB-C MPEG-4 HD Set-top Box with CAS smartcard support.",
+          minimumStock: 20,
+          currentStock: 60,
+          unitPrice: 950,
+          location: "Main Store",
+        },
+        {
+          name: "12V 1.5A DC Power Adapter for ONT/Router",
+          code: "PWR-12V-15A",
+          category: "Power Adapter",
+          unit: "piece",
+          description: "Universal switching power supply adapter with surge protection.",
+          minimumStock: 25,
+          currentStock: 75,
+          unitPrice: 180,
+          location: "Main Store",
+        },
+        {
+          name: "4-Way Outdoor CATV Splitter 5-1000MHz",
+          code: "SPL-4WAY-1G",
+          category: "Installation Accessories",
+          unit: "piece",
+          description: "Zinc diecast housing 4-way RF splitter for multi-TV installations.",
+          minimumStock: 20,
+          currentStock: 80,
+          unitPrice: 85,
+          location: "Main Store",
+        },
+      ]);
+      console.log("Seeded 10 default CableOps Material Catalog items.");
     }
 
     console.log("Seeding complete successfully.");
