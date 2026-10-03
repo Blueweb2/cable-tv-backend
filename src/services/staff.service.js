@@ -15,6 +15,7 @@ const createStaff = async ({
   employmentType = "full-time",
   employeeId,
   department = "",
+  specialization = "",
   emergencyContact = {},
   createdBy = null,
 }) => {
@@ -118,6 +119,7 @@ const createStaff = async ({
     employeeId: employeeId?.trim() || undefined,
 
     department: department?.trim() || "",
+    specialization: specialization?.trim() || "",
 
     emergencyContact: {
       name:
@@ -143,6 +145,7 @@ const getStaff = async ({
   search = "",
   status = "all",
   department = "",
+  specialization = "",
   page = 1,
   limit = 20,
 }) => {
@@ -181,6 +184,14 @@ const getStaff = async ({
   }
 
   // ==========================================
+  // SPECIALIZATION FILTER
+  // ==========================================
+
+  if (specialization?.trim()) {
+    query.specialization = specialization.trim();
+  }
+
+  // ==========================================
   // SEARCH
   // ==========================================
 
@@ -196,6 +207,7 @@ const getStaff = async ({
       { email: searchRegex },
       { employeeId: searchRegex },
       { department: searchRegex },
+      { specialization: searchRegex },
       { phone: searchRegex },
     ];
   }
@@ -265,6 +277,7 @@ const updateStaff = async (
     employmentType,
     employeeId,
     department,
+    specialization,
     emergencyContact,
   }
 ) => {
@@ -415,6 +428,10 @@ const updateStaff = async (
 
   if (department !== undefined) {
     staff.department = department.trim();
+  }
+
+  if (specialization !== undefined) {
+    staff.specialization = specialization.trim();
   }
 
   // ==========================================
@@ -568,6 +585,9 @@ const formatStaff = (staff) => {
 
     department:
       staff.department || "",
+
+    specialization:
+      staff.specialization || "",
 
     employmentType:
       staff.employmentType ||

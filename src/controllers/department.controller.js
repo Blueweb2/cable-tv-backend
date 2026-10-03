@@ -20,9 +20,12 @@ const getDepartmentStats = async (req, res, next) => {
  */
 const getStaffRecommendations = async (req, res, next) => {
   try {
-    const { department, zone, date } = req.query;
+    const { department, specialization, jobType, serviceName, zone, date } = req.query;
     const staff = await departmentService.getStaffRecommendations({
       department,
+      specialization,
+      jobType,
+      serviceName,
       zone,
       dutyDate: date,
     });

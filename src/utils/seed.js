@@ -48,6 +48,7 @@ async function seed() {
         phone: "+91 98111 22334",
         location: "North Sector Hub",
         department: "Fiber Optics & Splicing",
+        specialization: "Fiber Technician",
         role: "staff",
       },
       {
@@ -57,6 +58,7 @@ async function seed() {
         phone: "+91 98222 33445",
         location: "East Distribution Area",
         department: "Field Linesmen & Wiring",
+        specialization: "Linesman",
         role: "staff",
       },
       {
@@ -66,15 +68,17 @@ async function seed() {
         phone: "+91 98333 44556",
         location: "Central Grid Station",
         department: "New Installations & STB Setup",
+        specialization: "Installation Technician",
         role: "staff",
       },
       {
         name: "Arun Kumar",
         username: "arun_staff",
-        email: "staff@eventmanagement.com",
+        email: "arun@cableops.com",
         phone: "+91 98444 55667",
         location: "West Residential Zone",
         department: "Field Linesmen & Wiring",
+        specialization: "Linesman",
         role: "staff",
       },
     ];

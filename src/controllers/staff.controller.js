@@ -20,6 +20,7 @@ const createStaff = async (
       employmentType,
       employeeId,
       department,
+      specialization,
       emergencyContact,
     } = req.body;
 
@@ -63,6 +64,7 @@ const createStaff = async (
         employmentType,
         employeeId,
         department,
+        specialization,
         emergencyContact,
 
         // Manager/admin creating this account
@@ -97,6 +99,7 @@ const getStaff = async (
       search,
       status,
       department,
+      specialization,
       page,
       limit,
     } = req.query;
@@ -106,6 +109,7 @@ const getStaff = async (
         search,
         status,
         department,
+        specialization,
         page,
         limit,
       });
@@ -165,6 +169,7 @@ const updateStaff = async (
       employmentType,
       employeeId,
       department,
+      specialization,
       emergencyContact,
     } = req.body;
 
@@ -180,6 +185,7 @@ const updateStaff = async (
           employmentType,
           employeeId,
           department,
+          specialization,
           emergencyContact,
         }
       );

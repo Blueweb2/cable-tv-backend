@@ -70,6 +70,13 @@ const userSchema = new mongoose.Schema(
       maxlength: 100,
     },
 
+    specialization: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 100,
+    },
+
     // ==========================================
     // EMPLOYMENT
     // ==========================================
@@ -172,6 +179,12 @@ userSchema.index({
 // Staff department filtering
 userSchema.index({
   department: 1,
+  isActive: 1,
+});
+
+// Staff specialization filtering
+userSchema.index({
+  specialization: 1,
   isActive: 1,
 });
 
