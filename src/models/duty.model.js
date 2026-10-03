@@ -21,11 +21,26 @@ const dutySchema = new mongoose.Schema(
       default: "",
     },
 
-    // Assigned technician / staff member
+    // Assigned lead technician / staff member
     staff: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "Staff / Technician member is required"],
+    },
+
+    // Multi-staff team members for field work
+    assignedStaff: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    // Required technician specialization (e.g. Fiber Technician, Linesman)
+    specializationRequired: {
+      type: String,
+      trim: true,
+      default: "",
     },
 
     // Work order / Duty Title
@@ -292,6 +307,33 @@ const dutySchema = new mongoose.Schema(
       },
     ],
 
+    // Reassignment and dispatch history audit log
+    assignmentHistory: [
+      {
+        previousStaff: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        newStaff: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reassignedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reassignedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        reason: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+      },
+    ],
+
     // Manager/Dispatcher who assigned this duty
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -306,6 +348,11 @@ const dutySchema = new mongoose.Schema(
 
 dutySchema.index({
   staff: 1,
+  dutyDate: 1,
+});
+
+dutySchema.index({
+  assignedStaff: 1,
   dutyDate: 1,
 });
 

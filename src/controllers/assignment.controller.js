@@ -11,6 +11,8 @@ const createAssignment = async (req, res, next) => {
       zoneName,
       nodeNumber,
       staff,
+      assignedStaff,
+      specializationRequired,
       dutyTitle,
       jobType,
       priority,
@@ -44,6 +46,8 @@ const createAssignment = async (req, res, next) => {
       zoneName,
       nodeNumber,
       staff,
+      assignedStaff,
+      specializationRequired,
       dutyTitle,
       jobType,
       priority,
@@ -115,7 +119,12 @@ const getAssignmentById = async (req, res, next) => {
     if (role === "staff") {
       const assignedStaffId =
         assignment.staff?._id?.toString() || assignment.staff?.toString();
-      if (assignedStaffId !== req.user.userId) {
+      const isTeamMember = Array.isArray(assignment.assignedStaff) &&
+        assignment.assignedStaff.some(
+          (s) => (s?._id?.toString() || s?.toString()) === req.user.userId
+        );
+
+      if (assignedStaffId !== req.user.userId && !isTeamMember) {
         const error = new Error("You do not have permission to view this field duty");
         error.statusCode = 403;
         throw error;

@@ -30,42 +30,86 @@ const mapJobTypeToTechnicianRole = (jobType = "", serviceName = "") => {
   const jt = (jobType || "").toUpperCase();
   const sn = (serviceName || "").toLowerCase();
 
-  if (jt === "FIBER_SPLICING" || sn.includes("fiber") || sn.includes("splice") || sn.includes("otdr") || sn.includes("ftth")) {
+  // 1. Direct Job Type matching
+  if (jt === "FIBER_SPLICING") {
     return {
       department: "Fiber Optics & Splicing",
       specialization: "Fiber Technician",
     };
   }
 
-  if (jt === "LINE_REPAIR" || jt === "FIELD_PATROL" || jt === "SIGNAL_OPTIMIZATION" || sn.includes("line") || sn.includes("coax") || sn.includes("pole") || sn.includes("amplifier")) {
+  if (jt === "LINE_REPAIR" || jt === "FIELD_PATROL" || jt === "SIGNAL_OPTIMIZATION") {
     return {
       department: "Field Linesmen & Wiring",
       specialization: "Linesman",
     };
   }
 
-  if (jt === "NODE_MAINTENANCE" || sn.includes("noc") || sn.includes("server") || sn.includes("bandwidth")) {
+  if (jt === "NODE_MAINTENANCE") {
     return {
       department: "Network Operations (NOC)",
       specialization: "NOC Specialist",
     };
   }
 
-  if (jt === "NEW_INSTALLATION" || sn.includes("install") || sn.includes("stb") || sn.includes("router") || sn.includes("activation")) {
+  if (jt === "NEW_INSTALLATION") {
     return {
       department: "New Installations & STB Setup",
       specialization: "Installation Technician",
     };
   }
 
-  if (jt === "PAYMENT_COLLECTION" || sn.includes("bill") || sn.includes("collect") || sn.includes("payment")) {
+  if (jt === "PAYMENT_COLLECTION") {
     return {
       department: "Billing & Collection",
       specialization: "Billing Agent",
     };
   }
 
-  if (jt === "COMPLAINT_RESOLUTION" || sn.includes("support") || sn.includes("dispatch")) {
+  if (jt === "COMPLAINT_RESOLUTION") {
+    return {
+      department: "Customer Support & Dispatch",
+      specialization: "Support & Dispatch",
+    };
+  }
+
+  // 2. Service/category keyword fallback
+  if (sn.includes("fiber") || sn.includes("splice") || sn.includes("otdr") || sn.includes("ftth")) {
+    return {
+      department: "Fiber Optics & Splicing",
+      specialization: "Fiber Technician",
+    };
+  }
+
+  if (sn.includes("line") || sn.includes("coax") || sn.includes("pole") || sn.includes("amplifier")) {
+    return {
+      department: "Field Linesmen & Wiring",
+      specialization: "Linesman",
+    };
+  }
+
+  if (sn.includes("install") || sn.includes("stb") || sn.includes("router") || sn.includes("activation")) {
+    return {
+      department: "New Installations & STB Setup",
+      specialization: "Installation Technician",
+    };
+  }
+
+  if (sn.includes("noc") || sn.includes("server") || sn.includes("bandwidth")) {
+    return {
+      department: "Network Operations (NOC)",
+      specialization: "NOC Specialist",
+    };
+  }
+
+  if (sn.includes("bill") || sn.includes("collect") || sn.includes("payment")) {
+    return {
+      department: "Billing & Collection",
+      specialization: "Billing Agent",
+    };
+  }
+
+  if (sn.includes("support") || sn.includes("dispatch") || sn.includes("complaint")) {
     return {
       department: "Customer Support & Dispatch",
       specialization: "Support & Dispatch",
@@ -153,8 +197,32 @@ const getStaffRecommendations = async ({
     return [];
   }
 
-  // 3. Fetch availability and existing duty counts for the target date
-  const targetDay = new Date(dutyDate);
+  // 3. Fetch zone details if zone filter provided
+  let zoneStaffSet = new Set();
+  let zoneLeadId = null;
+  let zoneDoc = null;
+  if (zone) {
+    try {
+      if (zone.match(/^[0-9a-fA-F]{24}$/)) {
+        zoneDoc = await Zone.findById(zone).lean();
+      } else {
+        zoneDoc = await Zone.findOne({
+          $or: [{ code: zone.toUpperCase() }, { name: new RegExp(`^${zone}$`, "i") }],
+        }).lean();
+      }
+      if (zoneDoc) {
+        zoneLeadId = zoneDoc.assignedLead?.toString() || null;
+        if (Array.isArray(zoneDoc.assignedStaff)) {
+          zoneDoc.assignedStaff.forEach((s) => zoneStaffSet.add(s.toString()));
+        }
+      }
+    } catch (zErr) {
+      console.warn("Zone lookup error in getStaffRecommendations:", zErr.message);
+    }
+  }
+
+  // 4. Fetch availability and existing duty counts for the target date
+  const targetDay = new Date(dutyDate || new Date());
   const startOfDay = new Date(targetDay.setHours(0, 0, 0, 0));
   const endOfDay = new Date(targetDay.setHours(23, 59, 59, 999));
 
@@ -165,7 +233,7 @@ const getStaffRecommendations = async ({
     Duty.find({
       dutyDate: { $gte: startOfDay, $lte: endOfDay },
       status: { $in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"] },
-    }).select("staff").lean(),
+    }).select("staff assignedStaff").lean(),
   ]);
 
   const availabilityMap = new Map();
@@ -179,9 +247,17 @@ const getStaffRecommendations = async ({
     if (sId) {
       dutyCountMap.set(sId, (dutyCountMap.get(sId) || 0) + 1);
     }
+    if (Array.isArray(d.assignedStaff)) {
+      d.assignedStaff.forEach((as) => {
+        const asId = as?.toString();
+        if (asId && asId !== sId) {
+          dutyCountMap.set(asId, (dutyCountMap.get(asId) || 0) + 1);
+        }
+      });
+    }
   });
 
-  // 4. Calculate match score for each staff member
+  // 5. Calculate match score for each staff member
   const scoredStaff = staffList.map((member) => {
     const staffId = member._id.toString();
     let score = 0;
@@ -193,7 +269,7 @@ const getStaffRecommendations = async ({
       const tSpec = targetSpecialization.toLowerCase();
       if (sSpec === tSpec) {
         score += 50;
-        matchReasons.push(`Exact Specialization Match (${member.specialization})`);
+        matchReasons.push(`Exact Specialization (${member.specialization})`);
       } else if (sSpec.includes(tSpec) || tSpec.includes(sSpec)) {
         score += 30;
         matchReasons.push(`Related Specialization (${member.specialization})`);
@@ -210,18 +286,36 @@ const getStaffRecommendations = async ({
       }
     }
 
+    // Zone Match (+25 points if assigned to this zone, +35 if zone lead)
+    if (zoneDoc) {
+      if (zoneLeadId === staffId) {
+        score += 35;
+        matchReasons.push(`Zone Lead (${zoneDoc.name})`);
+      } else if (zoneStaffSet.has(staffId)) {
+        score += 25;
+        matchReasons.push(`Assigned to Zone (${zoneDoc.name})`);
+      }
+    }
+
     // Availability (+20 points if explicitly available, -40 if ON_LEAVE/UNAVAILABLE)
     const availStatus = availabilityMap.get(staffId) || "AVAILABLE";
     if (availStatus === "AVAILABLE") {
       score += 20;
+      matchReasons.push("Available on Shift Date");
     } else {
       score -= 40;
-      matchReasons.push(`Status: ${availStatus}`);
+      matchReasons.push(`Unavailable: ${availStatus}`);
     }
 
     // Existing Workload (-10 points per existing active duty on date)
     const activeDutiesCount = dutyCountMap.get(staffId) || 0;
-    score -= activeDutiesCount * 10;
+    if (activeDutiesCount === 0) {
+      score += 10;
+      matchReasons.push("Low Workload (0 active duties)");
+    } else {
+      score -= activeDutiesCount * 10;
+      matchReasons.push(`${activeDutiesCount} active duties scheduled`);
+    }
 
     return {
       ...member,
@@ -233,7 +327,7 @@ const getStaffRecommendations = async ({
     };
   });
 
-  // 5. Filter out staff with heavily negative scores (on leave / unavailable) if there are available alternatives
+  // Sort by highest match score first
   scoredStaff.sort((a, b) => b.matchScore - a.matchScore);
 
   return scoredStaff;

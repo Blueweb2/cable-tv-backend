@@ -1,10 +1,18 @@
 const Duty = require("../models/duty.model");
 const User = require("../models/user.model");
 const Zone = require("../models/zone.model");
+const Availability = require("../models/availability.model");
+const { mapJobTypeToTechnicianRole } = require("./department.service");
 const {
   sendDutyAssignmentNotification,
   sendDutyResponseNotificationToManager,
 } = require("../utils/notification.util");
+const {
+  emitDutyAssigned,
+  emitDutyReassigned,
+  emitDutyStatusChanged,
+  emitDutyCancelled,
+} = require("../socket");
 
 /**
  * Calculates duty duration in decimal hours and total payout amount
@@ -39,6 +47,51 @@ const computeDutyHoursAndAmount = (startTime = "", endTime = "", hourlyRate = 0)
 };
 
 /**
+ * Validates staff eligibility (must exist, must have role 'staff', must be active, must not be on leave)
+ */
+const validateStaffEligibility = async (staffId, dutyDate) => {
+  const staffMember = await User.findById(staffId);
+  if (!staffMember) {
+    const error = new Error("Selected technician not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (staffMember.role !== "staff") {
+    const error = new Error("Selected user is not a field staff member.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!staffMember.isActive) {
+    const error = new Error("Selected technician is inactive.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (dutyDate) {
+    const targetDay = new Date(dutyDate);
+    const startOfDay = new Date(targetDay.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(targetDay.setHours(23, 59, 59, 999));
+
+    const avail = await Availability.findOne({
+      staff: staffId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+    });
+
+    if (avail && (avail.status === "ON_LEAVE" || avail.status === "UNAVAILABLE")) {
+      const error = new Error(
+        `Selected technician is unavailable on this date (${avail.status}).`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  return staffMember;
+};
+
+/**
  * Create a staff assignment / field duty
  */
 const createAssignment = async ({
@@ -46,6 +99,8 @@ const createAssignment = async ({
   zoneName = "",
   nodeNumber = "",
   staff,
+  assignedStaff = [],
+  specializationRequired = "",
   dutyTitle,
   jobType = "GENERAL_SHIFT",
   priority = "MEDIUM",
@@ -66,17 +121,18 @@ const createAssignment = async ({
   tasks = [],
   assignedBy,
 }) => {
-  // CHECK STAFF
-  const staffMember = await User.findOne({
-    _id: staff,
-    role: "staff",
-    isActive: true,
-  });
+  // Validate primary technician
+  const staffMember = await validateStaffEligibility(staff, dutyDate);
 
-  if (!staffMember) {
-    const error = new Error("Active staff / technician not found");
-    error.statusCode = 404;
-    throw error;
+  // Validate multi-staff / team members if provided
+  let teamStaffIds = [staffMember._id];
+  if (Array.isArray(assignedStaff) && assignedStaff.length > 0) {
+    for (const memberId of assignedStaff) {
+      if (memberId && memberId.toString() !== staffMember._id.toString()) {
+        const teamMember = await validateStaffEligibility(memberId, dutyDate);
+        teamStaffIds.push(teamMember._id);
+      }
+    }
   }
 
   // Auto-fill zone name if zone ID provided
@@ -104,16 +160,22 @@ const createAssignment = async ({
     resolvedSiteLocation.googleMapsUrl = `https://www.google.com/maps?q=${resolvedSiteLocation.coordinates.lat},${resolvedSiteLocation.coordinates.lng}`;
   }
 
+  // Inferred specialization if not provided
+  const inferred = mapJobTypeToTechnicianRole(jobType, serviceName);
+  const resolvedSpec = specializationRequired || inferred.specialization || staffMember.specialization || "Field Technician";
+
   const duty = await Duty.create({
     zone: zone || null,
     zoneName: resolvedZoneName,
     nodeNumber,
-    staff,
+    staff: staffMember._id,
+    assignedStaff: teamStaffIds,
+    specializationRequired: resolvedSpec,
     dutyTitle,
     jobType,
     priority,
-    role: role || staffMember.department || "Field Technician",
-    department: department || staffMember.department || "Field Operations",
+    role: role || staffMember.specialization || staffMember.department || "Field Technician",
+    department: department || staffMember.department || inferred.department || "Field Operations",
     serviceName,
     description,
     location: location || resolvedSiteLocation.address || resolvedZoneName,
@@ -134,14 +196,16 @@ const createAssignment = async ({
   });
 
   const populatedDuty = await Duty.findById(duty._id)
-    .populate("staff", "name email phone department location")
+    .populate("staff", "name email phone department specialization location employeeId")
+    .populate("assignedStaff", "name email phone department specialization location employeeId")
     .populate("assignedBy", "name email phone")
     .populate("zone", "name code zoneType coverageArea");
 
   try {
     sendDutyAssignmentNotification(populatedDuty);
+    emitDutyAssigned(populatedDuty);
   } catch (err) {
-    console.error("Failed to send assignment notification:", err.message);
+    console.error("Failed to send assignment notification / realtime event:", err.message);
   }
 
   return populatedDuty;
@@ -166,7 +230,9 @@ const getAssignments = async ({
 } = {}) => {
   const query = {};
 
-  if (staff) query.staff = staff;
+  if (staff) {
+    query.$or = [{ staff }, { assignedStaff: staff }];
+  }
   if (zone) query.zone = zone;
   if (status && status !== "ALL") query.status = status;
   if (priority && priority !== "ALL") query.priority = priority;
@@ -185,7 +251,7 @@ const getAssignments = async ({
   }
 
   if (search) {
-    query.$or = [
+    const searchFilter = [
       { dutyTitle: { $regex: search, $options: "i" } },
       { zoneName: { $regex: search, $options: "i" } },
       { location: { $regex: search, $options: "i" } },
@@ -195,13 +261,20 @@ const getAssignments = async ({
       { "subscriber.name": { $regex: search, $options: "i" } },
       { "subscriber.phone": { $regex: search, $options: "i" } },
     ];
+    if (query.$or) {
+      query.$and = [{ $or: query.$or }, { $or: searchFilter }];
+      delete query.$or;
+    } else {
+      query.$or = searchFilter;
+    }
   }
 
   const skip = (Number(page) - 1) * Number(limit);
   const total = await Duty.countDocuments(query);
 
   const assignments = await Duty.find(query)
-    .populate("staff", "name email phone department location")
+    .populate("staff", "name email phone department specialization location employeeId")
+    .populate("assignedStaff", "name email phone department specialization location employeeId")
     .populate("assignedBy", "name email phone")
     .populate("zone", "name code zoneType coverageArea")
     .populate("sitePhotos.uploadedBy", "name")
@@ -226,7 +299,11 @@ const getAssignments = async ({
  */
 const getAssignmentById = async (id) => {
   const duty = await Duty.findById(id)
-    .populate("staff", "name email phone department location")
+    .populate("staff", "name email phone department specialization location employeeId")
+    .populate("assignedStaff", "name email phone department specialization location employeeId")
+    .populate("assignmentHistory.previousStaff", "name email phone specialization employeeId")
+    .populate("assignmentHistory.newStaff", "name email phone specialization employeeId")
+    .populate("assignmentHistory.reassignedBy", "name email phone")
     .populate("assignedBy", "name email phone")
     .populate("zone", "name code zoneType coverageArea")
     .populate("sitePhotos.uploadedBy", "name")
@@ -242,35 +319,87 @@ const getAssignmentById = async (id) => {
 };
 
 /**
- * Update assignment by Manager
+ * Update assignment by Manager (Supports Reassignment, multi-staff, cancellation)
  */
 const updateAssignment = async (id, updateData) => {
-  if (updateData.startTime || updateData.endTime || updateData.hourlyRate !== undefined) {
-    const existing = await Duty.findById(id);
-    if (existing) {
-      const sTime = updateData.startTime || existing.startTime;
-      const eTime = updateData.endTime || existing.endTime;
-      const hRate = updateData.hourlyRate !== undefined ? updateData.hourlyRate : existing.hourlyRate;
-      const { totalHours, totalAmount, hourlyRate: rate } = computeDutyHoursAndAmount(sTime, eTime, hRate);
-      updateData.totalHours = totalHours;
-      updateData.totalAmount = totalAmount;
-      updateData.hourlyRate = rate;
+  const existing = await Duty.findById(id);
+  if (!existing) {
+    const error = new Error("Field duty not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  let isReassignment = false;
+  let oldStaffId = null;
+  let reassignmentEntry = null;
+
+  // If staff is being updated / reassigned
+  if (updateData.staff && updateData.staff.toString() !== existing.staff.toString()) {
+    const newStaff = await validateStaffEligibility(
+      updateData.staff,
+      updateData.dutyDate || existing.dutyDate
+    );
+    isReassignment = true;
+    oldStaffId = existing.staff.toString();
+    updateData.staff = newStaff._id;
+
+    reassignmentEntry = {
+      previousStaff: existing.staff,
+      newStaff: newStaff._id,
+      reassignedBy: updateData.reassignedBy || updateData.assignedBy || null,
+      reassignedAt: new Date(),
+      reason: updateData.reassignmentReason || updateData.notes || "Manager Reassignment",
+    };
+
+    // Update assignedStaff team array
+    if (Array.isArray(updateData.assignedStaff)) {
+      updateData.assignedStaff = Array.from(
+        new Set([newStaff._id.toString(), ...updateData.assignedStaff.map(String)])
+      );
+    } else {
+      updateData.assignedStaff = [newStaff._id];
     }
   }
 
-  const updated = await Duty.findByIdAndUpdate(id, updateData, {
+  if (updateData.startTime || updateData.endTime || updateData.hourlyRate !== undefined) {
+    const sTime = updateData.startTime || existing.startTime;
+    const eTime = updateData.endTime || existing.endTime;
+    const hRate = updateData.hourlyRate !== undefined ? updateData.hourlyRate : existing.hourlyRate;
+    const { totalHours, totalAmount, hourlyRate: rate } = computeDutyHoursAndAmount(sTime, eTime, hRate);
+    updateData.totalHours = totalHours;
+    updateData.totalAmount = totalAmount;
+    updateData.hourlyRate = rate;
+  }
+
+  const updateOps = { $set: updateData };
+  if (reassignmentEntry) {
+    updateOps.$push = { assignmentHistory: reassignmentEntry };
+  }
+
+  const updated = await Duty.findByIdAndUpdate(id, updateOps, {
     new: true,
     runValidators: true,
   })
-    .populate("staff", "name email phone department location")
+    .populate("staff", "name email phone department specialization location employeeId")
+    .populate("assignedStaff", "name email phone department specialization location employeeId")
+    .populate("assignmentHistory.previousStaff", "name email phone specialization employeeId")
+    .populate("assignmentHistory.newStaff", "name email phone specialization employeeId")
+    .populate("assignmentHistory.reassignedBy", "name email phone")
     .populate("assignedBy", "name email phone")
     .populate("zone", "name code zoneType coverageArea")
     .populate("sitePhotos.uploadedBy", "name");
 
-  if (!updated) {
-    const error = new Error("Field duty not found");
-    error.statusCode = 404;
-    throw error;
+  try {
+    if (isReassignment) {
+      emitDutyReassigned(updated, oldStaffId);
+      sendDutyAssignmentNotification(updated);
+    } else if (updateData.status === "CANCELLED") {
+      emitDutyCancelled(updated);
+    } else {
+      emitDutyStatusChanged(updated);
+    }
+  } catch (err) {
+    console.error("Failed to emit socket updates on duty edit:", err.message);
   }
 
   return updated;
@@ -288,10 +417,16 @@ const addSitePhoto = async (dutyId, staffId, userRole = "staff", { url, caption 
   }
 
   const role = (userRole || "").toLowerCase();
-  if (role === "staff" && duty.staff.toString() !== staffId.toString()) {
-    const error = new Error("You can only upload site photos for your assigned field duty");
-    error.statusCode = 403;
-    throw error;
+  if (role === "staff") {
+    const isPrimaryStaff = duty.staff?.toString() === staffId.toString();
+    const isTeamMember = Array.isArray(duty.assignedStaff) &&
+      duty.assignedStaff.some((s) => s?.toString() === staffId.toString());
+
+    if (!isPrimaryStaff && !isTeamMember) {
+      const error = new Error("You can only upload site photos for your assigned field duty");
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   duty.sitePhotos.push({
@@ -304,9 +439,17 @@ const addSitePhoto = async (dutyId, staffId, userRole = "staff", { url, caption 
 
   await duty.save();
 
-  return Duty.findById(duty._id)
+  const populated = await Duty.findById(duty._id)
     .populate("staff", "name email phone")
     .populate("sitePhotos.uploadedBy", "name");
+
+  try {
+    emitDutyStatusChanged(populated);
+  } catch (err) {
+    console.error("Socket error on site photo:", err.message);
+  }
+
+  return populated;
 };
 
 /**
@@ -347,7 +490,10 @@ const deleteSitePhoto = async (dutyId, photoId, userId, userRole = "staff") => {
  * Staff respond to assignment (ACCEPT or REJECT)
  */
 const respondToAssignment = async (id, staffId, { response, rejectionReason = "" }) => {
-  const duty = await Duty.findOne({ _id: id, staff: staffId });
+  const duty = await Duty.findOne({
+    _id: id,
+    $or: [{ staff: staffId }, { assignedStaff: staffId }],
+  });
 
   if (!duty) {
     const error = new Error("Duty not found or not assigned to you");
@@ -376,8 +522,9 @@ const respondToAssignment = async (id, staffId, { response, rejectionReason = ""
 
   try {
     sendDutyResponseNotificationToManager(populatedDuty, response);
+    emitDutyStatusChanged(populatedDuty);
   } catch (err) {
-    console.error("Failed to send response notification:", err.message);
+    console.error("Failed to send response notification / socket event:", err.message);
   }
 
   return populatedDuty;
@@ -387,7 +534,10 @@ const respondToAssignment = async (id, staffId, { response, rejectionReason = ""
  * Staff update checklist item
  */
 const toggleChecklistItem = async (dutyId, staffId, itemIndex, completed) => {
-  const duty = await Duty.findOne({ _id: dutyId, staff: staffId });
+  const duty = await Duty.findOne({
+    _id: dutyId,
+    $or: [{ staff: staffId }, { assignedStaff: staffId }],
+  });
   if (!duty) {
     const error = new Error("Duty not found or not assigned to you");
     error.statusCode = 404;
@@ -408,6 +558,13 @@ const toggleChecklistItem = async (dutyId, staffId, itemIndex, completed) => {
   }
 
   await duty.save();
+
+  try {
+    emitDutyStatusChanged(duty);
+  } catch (err) {
+    console.error("Socket error on checklist toggle:", err.message);
+  }
+
   return duty;
 };
 
@@ -415,7 +572,10 @@ const toggleChecklistItem = async (dutyId, staffId, itemIndex, completed) => {
  * Staff complete duty with resolution notes & optical power measurement
  */
 const completeDuty = async (dutyId, staffId, { resolutionSummary = "", notes = "", finalOpticalPowerDbm = "" }) => {
-  const duty = await Duty.findOne({ _id: dutyId, staff: staffId });
+  const duty = await Duty.findOne({
+    _id: dutyId,
+    $or: [{ staff: staffId }, { assignedStaff: staffId }],
+  });
   if (!duty) {
     const error = new Error("Duty not found or not assigned to you");
     error.statusCode = 404;
@@ -435,7 +595,18 @@ const completeDuty = async (dutyId, staffId, { resolutionSummary = "", notes = "
   }
 
   await duty.save();
-  return duty;
+
+  const populated = await Duty.findById(duty._id)
+    .populate("staff", "name email phone")
+    .populate("zone", "name code");
+
+  try {
+    emitDutyStatusChanged(populated);
+  } catch (err) {
+    console.error("Socket error on complete duty:", err.message);
+  }
+
+  return populated;
 };
 
 /**
@@ -448,11 +619,19 @@ const deleteAssignment = async (id) => {
     error.statusCode = 404;
     throw error;
   }
+
+  try {
+    emitDutyCancelled(duty);
+  } catch (err) {
+    console.error("Socket error on delete assignment:", err.message);
+  }
+
   return { message: "Field duty removed successfully" };
 };
 
 module.exports = {
   computeDutyHoursAndAmount,
+  validateStaffEligibility,
   createAssignment,
   getAssignments,
   getAssignmentById,
